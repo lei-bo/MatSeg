@@ -57,7 +57,7 @@ class pixelnet(torch.nn.Module):
                     ind_range = range(ind, ind+10000)
                 features = []
                 for map in feature_maps:
-                    upsample = F.upsample(map, size=size, mode='bilinear', align_corners=True)
+                    upsample = F.interpolate(map, size=size, mode='bilinear', align_corners=True)
                     upsample = upsample.view(upsample.size(0), upsample.size(1), -1)[:, :, ind_range]
                     # for multiple in range(512 // map.size(1)):
                     #     features.append(upsample)
