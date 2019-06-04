@@ -19,12 +19,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
-from scipy.misc import imresize
 from tqdm import tqdm
 from collections import namedtuple
 
 from utils import *
-from models import *
+from models import pixelnet, unet
 from config import get_config
 
 
@@ -45,12 +44,9 @@ class Dataset(data.Dataset):
             img = Image.open(f)
             img = img.convert('RGB')
             img = self.transform_img(img)
-        label = np.load(label_dir).astype(np.uint8)
-        plt.imshow(label)
-        plt.show()
-        # label = Image.fromarray(label)
-        # label = self.transform_label(label)
-        label = imresize(label, self.size)
+        label = np.load(label_dir).astype(np.int8)
+        label = Image.fromarray(label)
+        label = self.transform_label(label)
         return img, label
 
     def __len__(self):
