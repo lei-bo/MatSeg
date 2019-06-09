@@ -1,16 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16, vgg16_bn, resnet50, resnet152, densenet121, densenet201, inception_v3
+from torchvision.models import vgg16
 
 
-class pixelnet(torch.nn.Module):
+class PixelNet(torch.nn.Module):
     def __init__(self, K=4):
-        super(pixelnet, self).__init__()
+        super(PixelNet, self).__init__()
         features = list(vgg16(pretrained=True).features)
         self.features = nn.ModuleList(features)
         self.classifier = nn.Sequential(
-            nn.Linear(1472, 2048, bias=True),#2560
+            nn.Linear(1472, 2048, bias=True),
             nn.ReLU(True),
             nn.Dropout(),
             nn.Linear(2048, K, bias=True),
@@ -68,37 +68,16 @@ class pixelnet(torch.nn.Module):
                 output = output.permute(0, 2, 1)
                 outputs.append(output)
             outputs = torch.cat(outputs, 2)
+            outputs = outputs.reshape(*outputs.shape[:2], *size)
         return outputs
 
 
-class unet(torch.nn.Module):
+class UNet(torch.nn.Module):
     def __init__(self, K=4):
-        super(unet, self).__init__()
+        super(UNet, self).__init__()
         self.down = vgg16(pretrained=True).features
         self.features = nn.ModuleList(list(self.down))
-        self.conv1024 = nn.Sequential(
-            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
-        )
-        # self.upsample = nn.ModuleList([
-        #     nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
-        #     nn.ConvTranspose2d(512, 512, kernel_size=4, stride=2, padding=1),
-        #     nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-        #     nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-        #     nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
-        # ])
-        # for i in range(len(self.upsample)):
-        #     size = self.upsample[i].weight.size()
-        #     self.upsample[i].weight.data = bilinear_kernel(size[0], size[1], size[2])
-        # self.conv = nn.ModuleList([
-        #     self.double_conv(1024, 512),
-        #     self.double_conv(1024, 512),
-        #     self.double_conv(512, 256),
-        #     self.double_conv(256, 128),
-        #     self.double_conv(128, 64),
-        # ])
+        self.conv1024 = self.double_conv(512, 1024)
         self.conv = nn.ModuleList([
             self.double_conv(1536, 512),
             self.double_conv(1024, 512),
@@ -106,7 +85,6 @@ class unet(torch.nn.Module):
             self.double_conv(384, 128),
             self.double_conv(192, 64),
         ])
-        # self.linear = nn.Linear(64, 4, bias=True)
         self.linear = nn.Sequential(
             nn.Linear(64, 256, bias=True),
             nn.ReLU(True),
@@ -116,6 +94,7 @@ class unet(torch.nn.Module):
             nn.Dropout(),
             nn.Linear(256, K, bias=True),
         )
+
     def double_conv(self, in_channel, out_channel):
         net = nn.Sequential(
             nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1),
@@ -131,11 +110,10 @@ class unet(torch.nn.Module):
             x = model(x)
             if ii in {3, 8, 15, 22, 29}:
                 features.append(x)
-                # print(x.shape)
         x = self.conv1024(x)
         for i in range(len(self.conv)):
-            x = F.interpolate(x, size=(features[-1-i].size(2), features[-1-i].size(3)), mode='bilinear', align_corners=True)
-            # x = self.upsample[i](x)
+            x = F.interpolate(x, size=(features[-1-i].size(2), features[-1-i].size(3)),
+                              mode='bilinear', align_corners=True)
             x = torch.cat([x, features[-1-i]], 1)
             x = self.conv[i](x)
         x = x.permute(0, 2, 3, 1)
@@ -144,37 +122,66 @@ class unet(torch.nn.Module):
         return x
 
 
-class unet_full(torch.nn.Module):
+class SegNet(torch.nn.Module):
     def __init__(self, K=4):
-        super(unet_full, self).__init__()
+        super(SegNet, self).__init__()
+        self.pool = [nn.MaxPool2d(kernel_size = 2, stride = 2, padding = 0, return_indices = True) for i in range(5)]
+        self.unpool = [nn.MaxUnpool2d(kernel_size = 2, stride = 2, padding = 0) for i in range(5)]
         self.conv = nn.ModuleList([
             self.double_conv(3, 64),
             self.double_conv(64, 128),
-            self.double_conv(128, 256),
-            self.double_conv(256, 512),
+            self.triple_conv(128, 256),
+            self.triple_conv(256, 512),
+            self.triple_conv(512, 512),
+            self.triple_conv(512, 512),
+            self.triple_conv(512, 256),
+            self.triple_conv(256, 128),
+            self.double_conv(128, 64),
+            self.double_conv(64, 64)
         ])
-        self.linear = nn.Linear(512, K, bias=True)
-    def double_conv(self, in_channel, out_channel):
-        net = nn.Sequential(
+        self.linear = nn.Linear(64, K)
+    def conv_block(self, in_channel, out_channel):
+        conv_block = nn.Sequential(
             nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channel, out_channel, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channel),
             nn.ReLU(inplace=True)
         )
+        return conv_block
+
+    def double_conv(self, in_channel, out_channel):
+        net = nn.Sequential(
+            self.conv_block(in_channel, out_channel),
+            self.conv_block(out_channel, out_channel),
+        )
         return net
+
+    def triple_conv(self, in_channel, out_channel):
+        net = nn.Sequential(
+            self.conv_block(in_channel, out_channel),
+            self.conv_block(out_channel, out_channel),
+            self.conv_block(out_channel, out_channel)
+        )
+        return net
+
     def forward(self, x):
-        for op in self.conv:
-            x = op(x)
+        indices_list = []
+        shape_list = []
+        for i in range(5):
+            shape_list.append(x.shape)
+            x = self.conv[i](x)
+            x, indices = self.pool[i](x)
+            indices_list.append(indices)
+        for i in range(5):
+            x = self.unpool[i](x, indices_list[-1-i], output_size = shape_list[-1-i])
+            x = self.conv[i+5](x)
         x = x.permute(0, 2, 3, 1)
         x = self.linear(x)
         x = x.permute(0, 3, 1, 2)
         return x
 
 
-if __name__ == '__main__':
-    x = torch.Tensor(1,3,768,1024).cuda()
-    # model = unet_dense121(K=2).cuda()
-    model = unet_full(K=2).cuda()
-    # model = unet(K=2).cuda()
-    output = model(x)
-    print(output.shape)
+model_mappings = {
+    'pixelnet': PixelNet,
+    'unet': UNet,
+    'segnet': SegNet
+}
