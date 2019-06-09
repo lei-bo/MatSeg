@@ -4,19 +4,18 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils import data
 from torch.utils.data import DataLoader
+from torchnet.meter import ConfusionMeter
 
-import torchvision.transforms as T
-
+import argparse
 import os
+import sys
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 from tqdm import tqdm
 
-from utils import AverageMeter, generate_rand_ind, accuracy
-from models import pixelnet, unet
+from utils import AverageMeter, Recorder, generate_rand_ind, accuracy, get_transform, metrics
+from models import model_mappings
 from config import get_config
 
 
@@ -37,42 +36,34 @@ class Dataset(data.Dataset):
             img = Image.open(f)
             img = img.convert('RGB')
             img = self.transform_img(img)
-        label = np.load(label_dir).astype(np.int8)
+        label = np.load(label_dir).astype(np.int16)
         label = Image.fromarray(label)
         label = self.transform_label(label).squeeze()
-        return img, label
+        return img, label, img_name
 
     def __len__(self):
         return len(self.img_names)
 
 
-def get_dataloader(args):
-    transform_img = T.Compose([
-        T.Resize(args['size']),
-        T.ToTensor(),
-        T.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
-    ])
-    transform_label = T.Compose([
-        T.Resize(args['size']),
-        T.ToTensor()
-    ])
-    train_set = Dataset(args['root']+'/train', args['size'], transform_img, transform_label)
-    validation_set = Dataset(args['root']+'/validate', args['size'], transform_img, transform_label)
-    train_loader = DataLoader(train_set, batch_size=args['batch_size'], shuffle=True, num_workers=0, drop_last=False)
+def get_dataloader(config):
+    transform_img, transform_label = get_transform(config['size'])
+    train_set = Dataset(config['root']+'/train', config['size'], transform_img, transform_label)
+    validation_set = Dataset(config['root']+'/validate', config['size'], transform_img, transform_label)
+    train_loader = DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=0, drop_last=False)
     validation_loader = DataLoader(validation_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
     return train_loader, validation_loader
 
 
-def train(args, model, criterion, optimizer, train_loader, flag='unet'):
+def train(config, model, criterion, optimizer, train_loader, method):
     losses = AverageMeter('Loss', ':.4e')
     accs = AverageMeter('Accuracy', ':6.4f')
     model.train()
-    print('learning rate =', optimizer.param_groups[0]['lr']) # get learning rate from optimizer status
-    for t, (inputs, labels) in enumerate(tqdm(train_loader)):
+    print('learning rate =', optimizer.param_groups[0]['lr'])  # get learning rate from optimizer status
+    for t, (inputs, labels, _) in enumerate(tqdm(train_loader)):
         inputs, labels = inputs.cuda(), labels.cuda().long()
-        if flag == 'pixelnet':
+        if method == 'pixelnet':
             model.set_train_flag(True)
-            rand_ind = generate_rand_ind(labels.cpu(), n_class=args['n_class'], n_samples=2048)
+            rand_ind = generate_rand_ind(labels.cpu(), n_class=config['n_class'], n_samples=2048)
             model.set_rand_ind(rand_ind)
             labels = labels.view(labels.size(0), -1)[:, rand_ind]
 
@@ -85,99 +76,135 @@ def train(args, model, criterion, optimizer, train_loader, flag='unet'):
         accs.update(accuracy(predictions, labels), inputs.shape[0])
         losses.update(loss.item(), inputs.size(0))
 
-        if (t + 1) % args['print_freq'] == 0:
+        if (t + 1) % config['print_freq'] == 0:
             print('t = %d, loss = %.4f' % (t + 1, loss.item()))
 
         # compute gradient and do gradient descent step
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    print('train loss:', round(losses.avg, 5), 'train accuracy:', round(accs.avg, 5))
-
-
-def validate(model, criterion, validation_loader, flag='unet'):
-    losses = AverageMeter('Loss', ':.4e')
-    accs = AverageMeter('Accuracy', ':6.4f')
-    with torch.no_grad():
-        model.eval()
-        for t, (inputs, labels) in enumerate(tqdm(validation_loader)):
-            inputs, labels = inputs.cuda(), labels.cuda().long()
-            if flag == 'pixelnet':
-                model.set_train_flag(False)
-                labels = labels.view(labels.size(0), -1)
-
-            # compute output
-            outputs = model(inputs)
-            predictions = outputs.cpu().argmax(1)
-            loss = criterion(outputs, labels)
-
-            # measure accuracy, record loss
-            accs.update(accuracy(predictions, labels), inputs.shape[0])
-            losses.update(loss.item(), inputs.size(0))
-        print('validation loss:', round(losses.avg, 5), 'validation accuracy:', round(accs.avg, 5))
+    print('--- training result ---')
+    print('loss: %.5f, accuracy: %.5f' % (losses.avg, accs.avg))
     return losses.avg, accs.avg
 
 
-def main(mode, dataset, version, save):
-    args = get_config(dataset, version)
-    method = args['model']
-    if mode == 'train':
-        criterion = nn.CrossEntropyLoss().cuda()
-        if method == 'unet':
-            model = unet(K=args['n_class']).cuda()
-        elif method == 'pixelnet':
-            model = pixelnet(K=args['n_class']).cuda()
+def evaluate(config, model, criterion, validation_loader, method, test_flag=False, save_dir=None):
+    losses = AverageMeter('Loss', ':.5f')
+    conf_meter = ConfusionMeter(config['n_class'])
+    with torch.no_grad():
+        model.eval()
+        for t, (inputs, labels, names) in enumerate(tqdm(validation_loader)):
+            inputs, labels = inputs.cuda(), labels.cuda().long()
+            if method == 'pixelnet':
+                model.set_train_flag(False)
+
+            # compute output
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+
+            # save predictions if needed
+            predictions = outputs.cpu().argmax(1)
+            if test_flag:
+                for i in range(predictions.shape[0]):
+                    plt.imsave('%s/%s.png' % (save_dir, names[i][:-4]), predictions[i].squeeze(), cmap='gray')
+
+            # measure accuracy, record loss
+            losses.update(loss.item(), inputs.size(0))
+            conf_meter.add(outputs.permute(0, 2, 3, 1).contiguous().view(-1, config['n_class']), labels.view(-1))
+        if test_flag:
+            print('--- evaluation result ---')
         else:
-            raise Exception('model cannot find')
+            print('--- validation result ---')
+        conf_mat = conf_meter.value()
+        acc, iou = metrics(conf_mat, verbose=test_flag)
+        print('loss: %.5f, accuracy: %.5f, mIU: %.5f' % (losses.avg, acc, iou))
+    return losses.avg, acc, iou
 
-        loss_val_min, acc_val_min = 10, 0
-        model_dir = './saved/%s_%s.pth' % (args['name'], method)
-        # info_dir = './saved/' + args['name'] + '_info.pkl'
-        train_loader, validation_loader = get_dataloader(args)
-        optimizer = optim.Adam(model.parameters(), lr=args['lr'], weight_decay=5e-4)
-        # optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
 
-        for epoch in range(1, args['epoch'] + 1):
-            print('Epoch', epoch, ':')
-            train(args, model, criterion, optimizer, train_loader, flag=method)
-            loss_val, acc_val = validate(model, criterion, validation_loader, flag=method)
-            scheduler = ReduceLROnPlateau(optimizer, patience=5)
+def main(args):
+    config = get_config(args.dataset, args.version)
+    method = config['model']
+    try:
+        model = model_mappings[method](K=config['n_class']).cuda()
+    except KeyError:
+        print('%s model does not exist' % method)
+        sys.exit(1)
+
+    if args.mode == 'train':
+        criterion = nn.CrossEntropyLoss().cuda()
+
+        model_dir = './saved/%s_%s.pth' % (config['name'], method)
+        log_dir = './log/%s_%s.log' % (config['name'], method)
+        train_loader, validation_loader = get_dataloader(config)
+        if config['optimizer'] == 'Adam':
+            optimizer = optim.Adam(model.parameters(), lr=config['lr'], weight_decay=5e-4)
+        elif config['optimizer'] == 'SGD':
+            optimizer = optim.SGD(model.parameters(), lr=config['lr'], momentum=0.9, weight_decay=5e-4)
+        else:
+            print('cannot found %s optimizer' % config['optimizer'])
+            sys.exit(1)
+
+        scheduler = ReduceLROnPlateau(optimizer, patience=3)
+        recorder = Recorder(('loss_train', 'acc_train', 'loss_val', 'acc_val'))
+        iou_val_max = 0
+        for epoch in range(1, config['epoch'] + 1):
+            print('Epoch %s:' % epoch)
+            loss_train, acc_train = train(config, model, criterion, optimizer, train_loader, method=method)
+            loss_val, acc_val, iou_val = evaluate(config, model, criterion, validation_loader, method=method)
             scheduler.step(loss_val)
 
-            # save model at lower loss_val
-            if loss_val < loss_val_min and save:
-                torch.save(model, model_dir)
-                print('validation loss improved from', loss_val_min, 'to', loss_val, '. Model Saved.')
-                loss_val_min = loss_val
+            # save loss and accuracy per epoch
+            recorder.update((loss_train, acc_train, loss_val, acc_val))
+            torch.save(recorder.record, log_dir)
 
-            # save model at higher acc_val
-            # if acc_val > acc_val_min and save:
-            #     torch.save(model, model_dir)
-            #     print('validation accuracy improved from', acc_val_min, 'to', acc_val, '. Model Saved.')
-            #     acc_val_min = acc_val
+            # save model with higher iou
+            if iou_val > iou_val_max and args.save:
+                torch.save({
+                    'epoch': epoch,
+                    'version': args.version,
+                    'model_state_dict': model.state_dict(),
+                }, model_dir)
+                print('validation iou improved from %.5f to %.5f. Model Saved.' % (iou_val_max, iou_val))
+                iou_val_max = iou_val
 
-    elif mode == 'validate':
+    elif args.mode == 'evaluate':
+        test_dir = '%s/%s' % (config['root'], args.test_folder)
+        test_set = Dataset(test_dir, config['size'], *get_transform(config['size']))
+        test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
         criterion = nn.CrossEntropyLoss().cuda()
-        model_dir = './saved/%s_%s.pth' % (args['name'], method)
-        model = torch.load(model_dir)
-        _, validation_loader = get_dataloader(args)
-        validate(model, criterion, validation_loader, flag=method)
+        model_dir = './saved/%s_%s.pth' % (config['name'], method)
+        model.load_state_dict(torch.load(model_dir)['model_state_dict'])
 
-    elif mode == 'test':
-        imgs_dir = args['imgRoot'] + '/test/images/'
-        img_names = os.listdir(imgs_dir)
-        for name in img_names:
-            img_dir = os.path.join(imgs_dir, name)
-            save_dir = args['imgRoot'] + '/test/predictions/' + name[:-4] + '_' + method + name[-4:]
-            prob, _ = get_prob(args, img_dir, method=method)
-            visualize_prob(prob, save_dir=save_dir)
+        # save prediction results, make directory if not exists
+        save_dir = '%s/predictions/%s_%s' % (test_dir, args.version, method)
+        if not os.path.isdir('%s/predictions' % test_dir):
+            os.mkdir('%s/predictions' % test_dir)
+        if not os.path.isdir(save_dir):
+            os.mkdir(save_dir)
+        evaluate(config, model, criterion, test_loader, method=method, test_flag=True, save_dir=save_dir)
+
     else:
-        raise Exception('mode cannot find')
+        print('%s mode does not exist' % args.mode)
+
+
+class Args:
+    def __init__(self):
+        self.mode = 'train'
+        self.dataset = 'uhcs'
+        self.version = 'v1'
+        self.save = False
+        self.test_folder = 'validate'
+
 
 if __name__ == '__main__':
-    mode = 'train'  # train, validate, test
-    # uhcs, ECCI, ECCI_small, ECCI_3, ECCI_small_processed, ECCI_3_processed, ECCI_small_processed
-    dataset = 'tomography'
-    version = 'v2'
-    save = False
-    main(mode, dataset, version, save)
+    parser = argparse.ArgumentParser(description='Micrograph Segmentation')
+    parser.add_argument('dataset', help='name of the dataset')
+    parser.add_argument('mode', choices=['train', 'evaluate'],
+                        help='mode choices: train, validate, test')
+    parser.add_argument('version', help='version defined in config.py')
+    parser.add_argument('--save', action='store_true', help='save the trained model')
+    parser.add_argument('--test-folder', default='test', help='name of the folder running test')
+    args = parser.parse_args()
+    # args = Args()
+
+    main(args)
