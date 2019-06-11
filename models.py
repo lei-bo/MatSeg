@@ -31,14 +31,10 @@ class PixelNet(torch.nn.Module):
             for ii, model in enumerate(self.features):
                 x = model(x)
                 if ii in feature_maps_index:
-                    # print(x.size())
                     upsample = F.interpolate(x, size=size, mode='bilinear', align_corners=True)
                     upsample = upsample.view(upsample.size(0), upsample.size(1), -1)[:,:,self.rand_ind]
-                    # for multiple in range(512 // x.size(1)):
-                    #     features.append(upsample)
                     features.append(upsample)
             outputs = torch.cat(features, 1)
-            #         raise Exception('hahaha')
             outputs = outputs.permute(0, 2, 1)
             outputs = self.classifier(outputs)
             outputs = outputs.permute(0, 2, 1)
@@ -125,8 +121,8 @@ class UNet(torch.nn.Module):
 class SegNet(torch.nn.Module):
     def __init__(self, K=4):
         super(SegNet, self).__init__()
-        self.pool = [nn.MaxPool2d(kernel_size = 2, stride = 2, padding = 0, return_indices = True) for i in range(5)]
-        self.unpool = [nn.MaxUnpool2d(kernel_size = 2, stride = 2, padding = 0) for i in range(5)]
+        self.pool = [nn.MaxPool2d(kernel_size=2, stride=2, padding=0, return_indices=True) for i in range(5)]
+        self.unpool = [nn.MaxUnpool2d(kernel_size=2, stride=2, padding=0) for i in range(5)]
         self.conv = nn.ModuleList([
             self.double_conv(3, 64),
             self.double_conv(64, 128),
@@ -140,6 +136,7 @@ class SegNet(torch.nn.Module):
             self.double_conv(64, 64)
         ])
         self.linear = nn.Linear(64, K)
+
     def conv_block(self, in_channel, out_channel):
         conv_block = nn.Sequential(
             nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1),

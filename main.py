@@ -151,7 +151,7 @@ def main(args):
             print('Epoch %s:' % epoch)
             loss_train, acc_train = train(config, model, criterion, optimizer, train_loader, method=method)
             loss_val, acc_val, iou_val = evaluate(config, model, criterion, validation_loader, method=method)
-            scheduler.step(loss_val)
+            scheduler.step(loss_train)
 
             # save loss and accuracy per epoch
             recorder.update((loss_train, acc_train, loss_val, acc_val))
@@ -187,24 +187,13 @@ def main(args):
         print('%s mode does not exist' % args.mode)
 
 
-class Args:
-    def __init__(self):
-        self.mode = 'train'
-        self.dataset = 'uhcs'
-        self.version = 'v1'
-        self.save = False
-        self.test_folder = 'validate'
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Micrograph Segmentation')
-    parser.add_argument('dataset', help='name of the dataset')
+    parser.add_argument('dataset', help='name of the dataset folder')
     parser.add_argument('mode', choices=['train', 'evaluate'],
                         help='mode choices: train, validate, test')
-    parser.add_argument('version', help='version defined in config.py')
+    parser.add_argument('version', help='version defined in config.py (v1, v2, ...)')
     parser.add_argument('--save', action='store_true', help='save the trained model')
     parser.add_argument('--test-folder', default='test', help='name of the folder running test')
     args = parser.parse_args()
-    # args = Args()
-
     main(args)
