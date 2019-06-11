@@ -41,6 +41,9 @@ def get_config(dataset, version):
     except KeyError:
         print('dataset %s does not exist' % dataset)
         sys.exit(1)
-    args.update(config[dataset][version])
+    try:
+        args.update(config[dataset][version])
+    except KeyError:
+        print('version %s is not defined' % version)
     args['name'] = dataset + '_' + version
     return args
