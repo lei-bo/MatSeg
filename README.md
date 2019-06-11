@@ -39,3 +39,5 @@ To evaluation a model on test images, run `main.py` with the following argument:
 - dataset: the name of the dataset folder 
 - version: the configuration version (eg: `v1`)
 - TEST_FOLDER: the name of the test folder, default: `test`
+## Related Paper
+[Segmentation of four microstructure constituents in ultrahigh carbon steel dataset] (https://arxiv.org/abs/1805.08693)
