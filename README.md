@@ -2,7 +2,7 @@
 This is a PyTorch implementation of training and evaluation of popular models on  materials microscopic images datasets.
 ## Preparation
 ### Environment Configuration
-The PyTorch and other necessary packages can be installed with pip. To do so, run:
+The PyTorch and other necessary packages can be installed with pip. To do so, run:  
 `pip install -r requirements.txt`
 ### Dataset Arrangement
 ```
