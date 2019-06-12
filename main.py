@@ -76,9 +76,6 @@ def train(config, model, criterion, optimizer, train_loader, method):
         accs.update(accuracy(predictions, labels), inputs.shape[0])
         losses.update(loss.item(), inputs.size(0))
 
-        if (t + 1) % config['print_freq'] == 0:
-            print('t = %d, loss = %.4f' % (t + 1, loss.item()))
-
         # compute gradient and do gradient descent step
         optimizer.zero_grad()
         loss.backward()
