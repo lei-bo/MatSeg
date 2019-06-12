@@ -4,7 +4,7 @@ import sys
 
 # generate default configuration given necessary infos and hyperparameters
 def gen_default(dataset, n_class, size, batch_size=1, lr=1e-4,
-                epoch=60, print_freq=50):
+                epoch=60):
     default = {
         'root': './data/' + dataset,
         'n_class': n_class,
@@ -13,7 +13,6 @@ def gen_default(dataset, n_class, size, batch_size=1, lr=1e-4,
         'optimizer': 'Adam',
         'lr': lr,
         'epoch': epoch,
-        'print_freq': print_freq
     }
     return default
 
