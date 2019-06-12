@@ -82,7 +82,7 @@ To evaluation a model on test images, run `main.py` with the following argument:
 - TEST_FOLDER: the name of the test folder, default: `test`
 
 For example, run  
-`python3 main.py uhcs evaluate v1 --test-folder validate`
+`python3 main.py uhcs evaluate v1 --test-folder validate`  
 will evaluate the images under `validate` folder for `uhcs` dataset with
 model trained in version `v1`.
 
