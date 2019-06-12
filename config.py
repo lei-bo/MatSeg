@@ -26,7 +26,7 @@ config = {
     },
     'tomography': {
         'default': gen_default('tomography', n_class=2, size=(852, 852)),
-        'v1': {'model': 'pixelnet',  'batch_size': 1},
+        'v1': {'model': 'pixelnet'},
         'v2': {'model': 'unet'},
         'v3': {'model': 'segnet'}
     }
