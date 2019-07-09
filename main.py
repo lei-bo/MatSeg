@@ -13,6 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from tqdm import tqdm
+import random
 
 from utils import AverageMeter, Recorder, generate_rand_ind, accuracy, get_transform, metrics
 from models import model_mappings
@@ -32,12 +33,15 @@ class Dataset(data.Dataset):
         img_name = self.img_names[index]
         img_dir = self.img_root + img_name
         label_dir = '%s%s.npy' % (self.label_root, img_name[:-4])  # the name of the label numpy file
+        seed = np.random.randint(2147483647) # get a random seed for fixed random transformation
         with open(img_dir, 'rb') as f:
             img = Image.open(f)
             img = img.convert('RGB')
+            random.seed(seed)
             img = self.transform_img(img)
         label = np.load(label_dir).astype(np.int16)
         label = Image.fromarray(label)
+        random.seed(seed)
         label = self.transform_label(label).squeeze()
         return img, label, img_name
 

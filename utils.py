@@ -55,14 +55,15 @@ def accuracy(predictions, labels):
 
 
 def get_transform(size):
-    transform_img = T.Compose([
-        T.Resize(size),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
     transform_label = T.Compose([
-        T.Resize(size),
+        T.RandomCrop(size=size),
+        T.RandomHorizontalFlip(),
+        T.RandomVerticalFlip(),
         T.ToTensor()
+    ])
+    transform_img = T.Compose([
+        transform_label,
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     return transform_img, transform_label
 
