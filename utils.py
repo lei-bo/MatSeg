@@ -54,16 +54,23 @@ def accuracy(predictions, labels):
     return acc
 
 
-def get_transform(size):
-    transform_label = T.Compose([
-        T.RandomCrop(size=size),
-        T.RandomHorizontalFlip(),
-        T.RandomVerticalFlip(),
-        T.ToTensor()
-    ])
+def get_transform(config, is_train):
+    mean, std, is_aug = config['mean'], config['std'], config['aug']
+    if is_train and is_aug:
+        transform_label = T.Compose([
+            T.RandomRotation(45),
+            T.RandomHorizontalFlip(),
+            T.RandomVerticalFlip(),
+            T.ToTensor()
+        ])
+    else:
+        transform_label = T.Compose([
+            T.ToTensor()
+        ])
+
     transform_img = T.Compose([
         transform_label,
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        T.Normalize(mean=mean, std=std)
     ])
     return transform_img, transform_label
 
@@ -83,8 +90,8 @@ def metrics(conf_mat, verbose=True):
     acc = conf_mat.diagonal().sum()/conf_mat.sum()
     IoU = IoUs.mean()
     if verbose:
-        print('precision:', np.round(precision, 5))
-        print('recall:', np.round(recall, 5))
-        print('IoUs:', np.round(IoUs, 5))
+        print('precision:', np.round(precision, 5), precision.mean())
+        print('recall:', np.round(recall, 5), recall.mean())
+        print('IoUs:', np.round(IoUs, 5), IoUs.mean())
     return acc, IoU
 
