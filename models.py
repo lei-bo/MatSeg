@@ -69,8 +69,7 @@ class PixelNet(torch.nn.Module):
 class UNet(torch.nn.Module):
     def __init__(self, K=4):
         super(UNet, self).__init__()
-        self.down = vgg16(pretrained=True).features
-        self.features = nn.ModuleList(list(self.down))
+        self.features = nn.ModuleList(list(vgg16(pretrained=True).features))
         self.conv1024 = self.double_conv(512, 1024)
         self.conv = nn.ModuleList([
             self.double_conv(1536, 512),
@@ -119,14 +118,15 @@ class UNet(torch.nn.Module):
 class SegNet(torch.nn.Module):
     def __init__(self, K=4):
         super(SegNet, self).__init__()
-        self.pool = [nn.MaxPool2d(kernel_size=2, stride=2, padding=0, return_indices=True) for i in range(5)]
-        self.unpool = [nn.MaxUnpool2d(kernel_size=2, stride=2, padding=0) for i in range(5)]
+        features = nn.ModuleList(list(vgg16(pretrained=True).features))
+        self.pool = [nn.MaxPool2d(kernel_size = 2, stride = 2, padding = 0, return_indices = True) for i in range(5)]
+        self.unpool = [nn.MaxUnpool2d(kernel_size = 2, stride = 2, padding = 0) for i in range(5)]
         self.conv = nn.ModuleList([
-            self.double_conv(3, 64),
-            self.double_conv(64, 128),
-            self.triple_conv(128, 256),
-            self.triple_conv(256, 512),
-            self.triple_conv(512, 512),
+            nn.Sequential(*features[0:4]),
+            nn.Sequential(*features[5:9]),
+            nn.Sequential(*features[10:16]),
+            nn.Sequential(*features[17:23]),
+            nn.Sequential(*features[24:30]),
             self.triple_conv(512, 512),
             self.triple_conv(512, 256),
             self.triple_conv(256, 128),
