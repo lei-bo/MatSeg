@@ -50,12 +50,13 @@ class Dataset(data.Dataset):
 
 
 def get_dataloader(config):
-    transform_img, transform_label = get_transform(config['size'])
-    train_set = Dataset(config['root']+'/train', config['size'], transform_img, transform_label)
-    validation_set = Dataset(config['root']+'/validate', config['size'], transform_img, transform_label)
+    transform_img_train, transform_label_train = get_transform(config, is_train=True)
+    transform_img_val, transform_label_val = get_transform(config, is_train=False)
+    train_set = Dataset(config['root']+'/train', config['size'], transform_img_train, transform_label_train)
+    val_set = Dataset(config['root']+'/validate', config['size'], transform_img_val, transform_label_val)
     train_loader = DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=0, drop_last=False)
-    validation_loader = DataLoader(validation_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
-    return train_loader, validation_loader
+    val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
+    return train_loader, val_loader
 
 
 def train(config, model, criterion, optimizer, train_loader, method):
@@ -125,6 +126,7 @@ def evaluate(config, model, criterion, validation_loader, method, test_flag=Fals
 def main(args):
     config = get_config(args.dataset, args.version)
     method = config['model']
+    criterion = nn.CrossEntropyLoss().cuda()
     try:
         model = model_mappings[method](K=config['n_class']).cuda()
     except KeyError:
@@ -132,8 +134,6 @@ def main(args):
         sys.exit(1)
 
     if args.mode == 'train':
-        criterion = nn.CrossEntropyLoss().cuda()
-
         model_dir = './saved/%s_%s.pth' % (config['name'], method)
         log_dir = './log/%s_%s.log' % (config['name'], method)
         train_loader, validation_loader = get_dataloader(config)
@@ -154,12 +154,12 @@ def main(args):
             loss_val, acc_val, iou_val = evaluate(config, model, criterion, validation_loader, method=method)
             scheduler.step(loss_train)
 
-            # save loss and accuracy per epoch
+            # update loss and accuracy per epoch
             recorder.update((loss_train, acc_train, loss_val, acc_val))
-            torch.save(recorder.record, log_dir)
 
             # save model with higher iou
             if iou_val > iou_val_max and args.save:
+                torch.save(recorder.record, log_dir)
                 torch.save({
                     'epoch': epoch,
                     'version': args.version,
@@ -170,9 +170,8 @@ def main(args):
 
     elif args.mode == 'evaluate':
         test_dir = '%s/%s' % (config['root'], args.test_folder)
-        test_set = Dataset(test_dir, config['size'], *get_transform(config['size']))
+        test_set = Dataset(test_dir, config['size'], *get_transform(config, is_train=False))
         test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
-        criterion = nn.CrossEntropyLoss().cuda()
         model_dir = './saved/%s_%s.pth' % (config['name'], method)
         model.load_state_dict(torch.load(model_dir)['model_state_dict'])
 
