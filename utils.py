@@ -88,7 +88,10 @@ def metrics(conf_mat, verbose=True):
         union_sum += union
         IoUs[i] = conf_mat[i,i]/union
     acc = conf_mat.diagonal().sum()/conf_mat.sum()
-    IoU = IoUs.mean()
+    if c == 2:
+        IoU = IoUs[1]
+    else:
+        IoU = IoUs.mean()
     if verbose:
         print('precision:', np.round(precision, 5), precision.mean())
         print('recall:', np.round(recall, 5), recall.mean())
