@@ -69,10 +69,11 @@ In this example, the parameters in version `v2` is the default parameters with m
 optimizer and learning rate.
 
 To train a model, run `main.py` with the following argument:  
-`python3 main.py dataset train version`
+`python3 main.py dataset train version --seed SEED`
 
 - `dataset`: the name of the dataset folder (eg: `uhcs`)
 - `version`: the configuration version (eg: `v1`)
+- `SEED`: random seed to reproduce experiments, default=`None`
 
 However, this setting does not save the model. To save the model during 
 training, run  
