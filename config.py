@@ -40,6 +40,11 @@ config = {
         'v4': {'model': 'pixelnet', 'aug': True},
         'v5': {'model': 'unet', 'aug': True},
         'v6': {'model': 'segnet', 'aug': True, 'optimizer': 'SGD', 'lr': 0.01}
+    },
+    'tomography224': {
+        'default': gen_default('tomography224', n_class=2, size=(852, 852),
+                               mean=[0.504, 0.504, 0.504], std=[0.051, 0.051, 0.051]),
+        'v1': {'model': 'segnet', 'aug': True, 'batch_size': 16}
     }
 }
 
