@@ -10,13 +10,12 @@ class PixelNet(torch.nn.Module):
         super(PixelNet, self).__init__()
         features = list(vgg16(pretrained=True).features)
         self.features = nn.ModuleList(features)
-        self.classifier = nn.Sequential(
-            nn.Linear(1472, 64, bias=True),
-            nn.ReLU(False),
+        self.linear = nn.Sequential(
+            nn.Linear(1472, 2048, bias=True),
+            nn.ReLU(inplace=True),
             nn.Dropout(),
-            nn.Linear(64, n_classes, bias=True),
+            nn.Linear(2048, n_classes, bias=True),
         )
-        self.linear = nn.Linear(1472, n_classes, bias=True)
         self.is_train = False
 
     def set_train_flag(self, flag):
@@ -51,7 +50,7 @@ class PixelNet(torch.nn.Module):
                     features.append(upsample)
             outputs = torch.cat(features, 1)
             outputs = outputs.permute(0, 2, 1)
-            outputs = self.classifier(outputs)
+            outputs = self.linear(outputs)
             outputs = outputs.permute(0, 2, 1)
         else:
             size, n_pixels = (x.size(2), x.size(3)), x.size(2)*x.size(3)
@@ -61,6 +60,7 @@ class PixelNet(torch.nn.Module):
                 if ii in feature_maps_index:
                     upsample = F.interpolate(x, size=size, mode='bilinear', align_corners=True)
                     upsample_maps.append(upsample)
+            # perform batch processing for fully connected layers to reduce memory
             outputs = []
             for ind in range(0, n_pixels, 10000):
                 ind_range = range(ind, min(ind+10000, n_pixels))
@@ -70,7 +70,7 @@ class PixelNet(torch.nn.Module):
                     features.append(upsample)
                 output = torch.cat(features, 1)
                 output = output.permute(0, 2, 1)
-                output = self.classifier(output)
+                output = self.linear(output)
                 output = output.permute(0, 2, 1)
                 outputs.append(output)
             outputs = torch.cat(outputs, 2)
