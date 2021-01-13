@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils import data
 from torch.utils.data import DataLoader
 from torchnet.meter import ConfusionMeter
 
@@ -11,53 +10,12 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
 from tqdm import tqdm
-import random
 
-from utils import AverageMeter, Recorder, generate_rand_ind, accuracy, get_transform, metrics
+from datasets import Dataset, get_dataloader, get_transform
+from utils import AverageMeter, Recorder, accuracy, metrics
 from models import model_mappings
 from config import get_config
-
-
-class Dataset(data.Dataset):
-    def __init__(self, root, size, transform_img, transform_label):
-        self.img_root = root + '/images/'
-        self.label_root = root + '/labels_npy/'
-        self.img_names = os.listdir(self.img_root)
-        self.size = size
-        self.transform_img = transform_img
-        self.transform_label = transform_label
-        self.seeds = [np.random.randint(np.iinfo(np.int32).max) for _ in range(len(self.img_names))]
-
-    def __getitem__(self, index):
-        img_name = self.img_names[index]
-        img_dir = self.img_root + img_name
-        label_dir = '%s%s.npy' % (self.label_root, img_name[:-4])  # the name of the label numpy file
-        seed = self.seeds[index] # get a random seed for fixed random transformation
-        with open(img_dir, 'rb') as f:
-            img = Image.open(f)
-            img = img.convert('RGB')
-            random.seed(seed)
-            img = self.transform_img(img)
-        label = np.load(label_dir).astype(np.int16)
-        label = Image.fromarray(label)
-        random.seed(seed)
-        label = self.transform_label(label).squeeze()
-        return img, label, img_name
-
-    def __len__(self):
-        return len(self.img_names)
-
-
-def get_dataloader(config):
-    transform_img_train, transform_label_train = get_transform(config, is_train=True)
-    transform_img_val, transform_label_val = get_transform(config, is_train=False)
-    train_set = Dataset(config['root']+'/train', config['size'], transform_img_train, transform_label_train)
-    val_set = Dataset(config['root']+'/validate', config['size'], transform_img_val, transform_label_val)
-    train_loader = DataLoader(train_set, batch_size=config['batch_size'], shuffle=True, num_workers=0, drop_last=False)
-    val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=0, drop_last=False)
-    return train_loader, val_loader
 
 
 def train(config, model, criterion, optimizer, train_loader, method):
@@ -69,7 +27,7 @@ def train(config, model, criterion, optimizer, train_loader, method):
         inputs, labels = inputs.cuda(), labels.cuda().long()
         if method == 'pixelnet':
             model.set_train_flag(True)
-            rand_ind = generate_rand_ind(labels.cpu(), n_class=config['n_class'], n_samples=2048)
+            rand_ind = model.generate_rand_ind(labels.cpu(), n_class=config['n_class'], n_samples=2048)
             model.set_rand_ind(rand_ind)
             labels = labels.view(labels.size(0), -1)[:, rand_ind]
 
@@ -133,7 +91,7 @@ def main(args):
     method = config['model']
     criterion = nn.CrossEntropyLoss().cuda()
     try:
-        model = model_mappings[method](K=config['n_class']).cuda()
+        model = model_mappings[method](config['n_class']).cuda()
     except KeyError:
         print('%s model does not exist' % method)
         sys.exit(1)
@@ -161,17 +119,20 @@ def main(args):
 
             # update loss and accuracy per epoch
             recorder.update((loss_train, acc_train, loss_val, acc_val))
+            if args.save: torch.save(recorder.record, log_dir)
 
             # save model with higher iou
-            if iou_val > iou_val_max and args.save:
-                torch.save(recorder.record, log_dir)
-                torch.save({
-                    'epoch': epoch,
-                    'version': args.version,
-                    'model_state_dict': model.state_dict(),
-                }, model_dir)
-                print('validation iou improved from %.5f to %.5f. Model Saved.' % (iou_val_max, iou_val))
+            if iou_val > iou_val_max:
+                print('validation iou improved from %.5f to %.5f.' % (iou_val_max, iou_val))
                 iou_val_max = iou_val
+                if args.save:
+                    print('Model saved.')
+                    torch.save({
+                        'epoch': epoch,
+                        'version': args.version,
+                        'config': config,
+                        'model_state_dict': model.state_dict(),
+                    }, model_dir)
 
     elif args.mode == 'evaluate':
         test_dir = '%s/%s' % (config['root'], args.test_folder)
@@ -181,10 +142,8 @@ def main(args):
 
         # save prediction results, make directory if not exists
         save_dir = '%s/predictions/%s_%s' % (test_dir, args.version, method)
-        if not os.path.isdir('%s/predictions' % test_dir):
-            os.mkdir('%s/predictions' % test_dir)
         if not os.path.isdir(save_dir):
-            os.mkdir(save_dir)
+            os.makedirs(save_dir)
         evaluate(config, model, criterion, test_loader, method=method, test_flag=True, save_dir=save_dir)
 
     else:

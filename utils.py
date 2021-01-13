@@ -1,7 +1,4 @@
 import numpy as np
-import torch
-import torchvision.transforms as T
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -35,44 +32,10 @@ class Recorder(object):
             self.record[name].append(val)
 
 
-def generate_rand_ind(labels, n_class, n_samples):
-    n_samples_avg = int(n_samples/n_class)
-    rand_ind = []
-    for i in range(n_class):
-        positions = np.where(labels.view(1, -1) == i)[1]
-        if positions.size == 0:
-            continue
-        else:
-            rand_ind.append(np.random.choice(positions, n_samples_avg))
-    rand_ind = np.random.permutation(np.hstack(rand_ind))
-    return rand_ind
-
-
 def accuracy(predictions, labels):
     correct = predictions.eq(labels.cpu()).sum().item()
     acc = correct/np.prod(labels.shape)
     return acc
-
-
-def get_transform(config, is_train):
-    mean, std, is_aug = config['mean'], config['std'], config['aug']
-    if is_train and is_aug:
-        transform_label = T.Compose([
-            T.RandomRotation(45),
-            T.RandomHorizontalFlip(),
-            T.RandomVerticalFlip(),
-            T.ToTensor()
-        ])
-    else:
-        transform_label = T.Compose([
-            T.ToTensor()
-        ])
-
-    transform_img = T.Compose([
-        transform_label,
-        T.Normalize(mean=mean, std=std)
-    ])
-    return transform_img, transform_label
 
 
 def metrics(conf_mat, verbose=True):

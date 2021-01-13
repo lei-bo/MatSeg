@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,7 +6,7 @@ from torchvision.models import vgg16
 
 
 class PixelNet(torch.nn.Module):
-    def __init__(self, K=4):
+    def __init__(self, n_classes):
         super(PixelNet, self).__init__()
         features = list(vgg16(pretrained=True).features)
         self.features = nn.ModuleList(features)
@@ -13,19 +14,33 @@ class PixelNet(torch.nn.Module):
             nn.Linear(1472, 2048, bias=True),
             nn.ReLU(True),
             nn.Dropout(),
-            nn.Linear(2048, K, bias=True),
+            nn.Linear(2048, n_classes, bias=True),
         )
-        self.linear = nn.Linear(1472, K, bias=True)
+        self.linear = nn.Linear(1472, n_classes, bias=True)
+        self.is_train = False
 
     def set_train_flag(self, flag):
-        self.train_flag = flag
+        self.is_train = flag
+
+    def generate_rand_ind(self, labels, n_class, n_samples):
+        n_samples_avg = int(n_samples / n_class)
+        rand_ind = []
+        for i in range(n_class):
+            positions = np.where(labels.view(1, -1) == i)[1]
+            if positions.size == 0:
+                continue
+            else:
+                rand_ind.append(np.random.choice(positions, n_samples_avg))
+        rand_ind = np.random.permutation(np.hstack(rand_ind))
+        return rand_ind
 
     def set_rand_ind(self, rand_ind):
         self.rand_ind = rand_ind
 
     def forward(self, x):
+        # take the feature maps before MaxPooling layers
         feature_maps_index = {3, 8, 15, 22, 29}
-        if self.train_flag:
+        if self.is_train:
             features = []
             size = (x.size(2), x.size(3))
             for ii, model in enumerate(self.features):
@@ -67,7 +82,7 @@ class PixelNet(torch.nn.Module):
 
 
 class UNet(torch.nn.Module):
-    def __init__(self, K=4):
+    def __init__(self, n_classes):
         super(UNet, self).__init__()
         self.features = nn.ModuleList(list(vgg16(pretrained=True).features))
         self.conv1024 = self.double_conv(512, 1024)
@@ -85,7 +100,7 @@ class UNet(torch.nn.Module):
             nn.Linear(256, 256, bias=True),
             nn.ReLU(True),
             nn.Dropout(),
-            nn.Linear(256, K, bias=True),
+            nn.Linear(256, n_classes, bias=True),
         )
 
     def double_conv(self, in_channel, out_channel):
@@ -116,7 +131,7 @@ class UNet(torch.nn.Module):
 
 
 class SegNet(torch.nn.Module):
-    def __init__(self, K=4):
+    def __init__(self, n_classes):
         super(SegNet, self).__init__()
         features = nn.ModuleList(list(vgg16(pretrained=True).features))
         self.pool = [nn.MaxPool2d(kernel_size = 2, stride = 2, padding = 0, return_indices = True) for i in range(5)]
@@ -133,7 +148,7 @@ class SegNet(torch.nn.Module):
             self.double_conv(128, 64),
             self.double_conv(64, 64)
         ])
-        self.linear = nn.Linear(64, K)
+        self.linear = nn.Linear(64, n_classes)
 
     def conv_block(self, in_channel, out_channel):
         conv_block = nn.Sequential(
