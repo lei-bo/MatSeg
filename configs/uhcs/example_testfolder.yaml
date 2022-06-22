@@ -1,0 +1,9 @@
+# Use .txt file to specify the training and validation set. Test set consists of
+# images in `test_img_dir` and test labels are not available.
+split_info:
+  type: TextSplit
+  train_split_file: train.txt
+  val_split_file: val.txt
+  test_type: folder
+  test_img_dir: ../../data/uhcs/test_images
+  test_label_dir: None

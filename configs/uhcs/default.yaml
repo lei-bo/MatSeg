@@ -1,0 +1,46 @@
+# dataset basics
+dataset: uhcs
+img_folder: images
+label_folder: labels
+n_classes: 4
+
+# train, validation and test split
+split_info:
+  type: CSVSplit
+  test_type: CSVSplit
+  split_file: split_cv.csv
+  split_col_name: split
+  val_split_num: 1
+  test_split_num: 0
+  train_reverse: True
+cross_validation:
+  val_splits: [1, 2, 3, 4, 5, 0]
+  test_splits: [0, 1, 2, 3, 4, 5]
+
+# data information
+train_size: [224, 224]
+eval_size: [484, 645]
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]
+
+# data augmentation
+augmentations:
+  Flip: {p: 0.5}
+  ShiftScaleRotate: {shift_limit: 0, scale_limit: [0,1], rotate_limit: 45, p: 0.8}
+  RandomBrightnessContrast: {brightness_limit: 0.2, contrast_limit: 0.3, p: 0.8}
+
+# training
+n_epochs: 150
+train_repeat: 8
+loss_type: CE
+ignore_index: -1
+batch_size: 4
+optimizer:
+  type: AdamW
+  encoder_lr: 5.e-5
+  decoder_lr: 5.e-4
+  weight_decay: 1.e-2
+lr_scheduler:
+  type: MultiStepLR
+  params: {milestones: [100], gamma: 0.3}
+metric: mIoU

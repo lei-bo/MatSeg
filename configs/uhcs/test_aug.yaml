@@ -1,0 +1,10 @@
+augmentations:
+  ShiftScaleRotate: {shift_limit: 0, scale_limit: [-0.5,0.5], rotate_limit: 0, border_mode: 3, p: 1}
+#  RandomBrightnessContrast: {brightness_limit: 0.3, contrast_limit: 0.4, p: 1}
+#  GridDistortion: {num_steps: 5, distort_limit: 0.3, p: 1}
+#  ElasticTransform: {alpha: 1, sigma: 50, alpha_affine: 50, p: 1}
+#  GaussianBlur: {blur_limit: [3, 7], p: 1}
+#  MotionBlur: {blur_limit: 9, p: 1}
+#  GaussNoise: {p: 1}
+#  Sharpen: {p: 1}
+#  CLAHE: {clip_limit: 4, tile_grid_size: [8,8], p: 1}
