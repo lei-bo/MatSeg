@@ -1,0 +1,9 @@
+# This is a configuration example running on Colab
+split_info:
+  type: TextSplit
+  train_split_file: train16A.txt
+  val_split_file: validate4A.txt
+  test_type: TextSplit
+  test_split_file: test4A.txt
+
+n_epochs: 30
