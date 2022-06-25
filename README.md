@@ -19,7 +19,7 @@ The dataset folder need to be arranged in the following form:
 data
 |--DATASET
     |--images
-        a.tif
+        a.tif (or a.png, a.jpg)
     |--labels
         a.npy
     |--labels_colored
@@ -123,6 +123,10 @@ To evaluation the model trained by `CONFIG.yaml` on validation and test set, run
 - mode: `val` or `test` specifying validation or test
 
 Evaluation will save the predictions in `./checkpoints/DATASET/CONFIG/predictions`.
+
+## Colab Support
+To train and evaluate models using GPU resources on Google Colab, please go to the notebook
+`colab.ipynb`.
 
 ## Related Papers
 DeCost, B., Lei, B., Francis, T., & Holm, E. (2019). High Throughput Quantitative 
